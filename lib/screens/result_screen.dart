@@ -108,6 +108,16 @@ class ResultScreen extends StatelessWidget {
                       _mathSolver.solveMathProblem(mathProblem),
                       style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
                     ),
+                    const SizedBox(height: 10),
+                    const Text(
+                      'Note: For complex expressions, you may need to format with proper notation.',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontStyle: FontStyle.italic,
+                        color: Colors.grey,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
                   ],
                 ),
               ),

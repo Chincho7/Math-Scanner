@@ -1,0 +1,19 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Run on Web",
+            "type": "node",
+            "request": "launch",
+            "program": "${workspaceFolder}/run_web.js",
+            "preLaunchTask": "Create Web Runner"
+        },
+        {
+            "name": "Run on macOS",
+            "type": "node",
+            "request": "launch",
+            "program": "${workspaceFolder}/run_macos.js",
+            "preLaunchTask": "Create macOS Runner"
+        }
+    ]
+}

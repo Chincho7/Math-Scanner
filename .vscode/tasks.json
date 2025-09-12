@@ -1,0 +1,74 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "Run on iPhone",
+            "type": "shell",
+            "command": "cd \"${workspaceFolder}\" && flutter clean && flutter pub get && cd ios && pod install && cd .. && flutter build ios --no-codesign && open ios/Runner.xcworkspace",
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "presentation": {
+                "reveal": "always",
+                "panel": "new"
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "Run on Web",
+            "type": "shell",
+            "command": "cd \"${workspaceFolder}\" && flutter run -d chrome",
+            "group": "build",
+            "presentation": {
+                "reveal": "always",
+                "panel": "new"
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "Run on macOS",
+            "type": "shell",
+            "command": "cd \"${workspaceFolder}\" && flutter run -d macos",
+            "group": "build",
+            "presentation": {
+                "reveal": "always",
+                "panel": "new"
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "Fix iOS Build Issues",
+            "type": "shell",
+            "command": "cd \"${workspaceFolder}\" && bash fix_ios_build.sh",
+            "group": "build",
+            "presentation": {
+                "reveal": "always",
+                "panel": "new"
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "Clean Project",
+            "type": "shell",
+            "command": "cd \"${workspaceFolder}\" && flutter clean && rm -rf ios/Pods ios/Podfile.lock && flutter pub get && cd ios && pod install",
+            "group": "build",
+            "presentation": {
+                "reveal": "always",
+                "panel": "new"
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "Fix Resource Fork Issues",
+            "type": "shell",
+            "command": "cd \"${workspaceFolder}/ios\" && find . -name \"._*\" -delete && cd .. && rm -rf build/ios",
+            "group": "build",
+            "presentation": {
+                "reveal": "always",
+                "panel": "new"
+            },
+            "problemMatcher": []
+        }
+    ]
+}

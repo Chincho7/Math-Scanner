@@ -25,6 +25,37 @@ class _ManualInputScreenState extends State<ManualInputScreen> {
       _displayedExpression = _mathController.currentEditingValue()?.toString() ?? '';
     });
   }
+  
+  Widget _buildOperationButton(String operation) {
+    return ElevatedButton(
+      onPressed: () {
+        setState(() {
+          if (operation == '=') {
+            _displayedExpression = (_displayedExpression.isEmpty ? '' : _displayedExpression) + '=';
+          } else {
+            // For operations like +, -, ×, ÷, we append to the current expression
+            _displayedExpression = (_displayedExpression.isEmpty ? '' : _displayedExpression) + operation;
+            
+            // Also try to update the math controller with the new operation
+            try {
+              // We'll only update the displayed expression, not the math controller directly
+              // This avoids type conversion issues
+              setState(() {
+                _displayedExpression += operation;
+              });
+            } catch (e) {
+              print('Error updating expression: $e');
+            }
+          }
+        });
+      },
+      style: ElevatedButton.styleFrom(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        minimumSize: const Size(50, 50),
+      ),
+      child: Text(operation, style: const TextStyle(fontSize: 20)),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -81,19 +112,19 @@ class _ManualInputScreenState extends State<ManualInputScreen> {
                       },
                     ),
                     const SizedBox(height: 10),
-                    // Custom button for equals sign
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
+                    // Buttons for common operations
+                    Wrap(
+                      spacing: 8.0,
+                      runSpacing: 8.0,
+                      alignment: WrapAlignment.center,
                       children: [
-                        ElevatedButton(
-                          onPressed: () {
-                            // Add equals sign to the expression
-                            final currentValue = _mathController.currentEditingValue()?.toString() ?? '';
-                            _mathController.setEditingValue(currentValue + '=');
-                            _updateDisplayedExpression();
-                          },
-                          child: const Text('=', style: TextStyle(fontSize: 24)),
-                        ),
+                        _buildOperationButton('+'),
+                        _buildOperationButton('-'),
+                        _buildOperationButton('×'), // Multiplication
+                        _buildOperationButton('÷'), // Division
+                        _buildOperationButton('='),
+                        _buildOperationButton('('),
+                        _buildOperationButton(')'),
                       ],
                     ),
                   ],
@@ -103,8 +134,9 @@ class _ManualInputScreenState extends State<ManualInputScreen> {
             const SizedBox(height: 20),
             ElevatedButton(
               onPressed: () {
-                if (_mathController.currentEditingValue() != null) {
-                  final String mathProblem = _mathController.currentEditingValue().toString();
+                if (_displayedExpression.isNotEmpty) {
+                  // Use the displayed expression which may include the equals sign
+                  final String mathProblem = _displayedExpression;
                   Navigator.push(
                     context,
                     MaterialPageRoute(

@@ -4,6 +4,7 @@ import 'package:math_scanner/screens/manual_input_screen.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:math_scanner/screens/result_screen.dart';
 import 'package:math_scanner/services/text_recognition_service.dart';
+import 'package:math_scanner/screens/camera_test_page.dart';
 
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
@@ -50,6 +51,14 @@ class HomeScreen extends StatelessWidget {
               Colors.orange,
               () => _navigateToManualInputScreen(context),
             ),
+            const SizedBox(height: 20),
+            _buildOptionCard(
+              context,
+              'Camera Test',
+              Icons.camera_outlined,
+              Colors.purple,
+              () => _navigateToCameraTest(context),
+            ),
           ],
         ),
       ),
@@ -90,6 +99,15 @@ class HomeScreen extends StatelessWidget {
       context,
       MaterialPageRoute(
         builder: (context) => const CameraScreen(),
+      ),
+    );
+  }
+
+  void _navigateToCameraTest(BuildContext context) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => const CameraTestPage(),
       ),
     );
   }

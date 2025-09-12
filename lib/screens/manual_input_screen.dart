@@ -21,9 +21,13 @@ class _ManualInputScreenState extends State<ManualInputScreen> {
   }
 
   void _updateDisplayedExpression() {
-    setState(() {
-      _displayedExpression = _mathController.currentEditingValue()?.toString() ?? '';
-    });
+    final newExpression = _mathController.currentEditingValue()?.toString() ?? '';
+    // Only update if the math controller has content and it's different from what we have
+    if (newExpression.isNotEmpty && newExpression != _displayedExpression) {
+      setState(() {
+        _displayedExpression = newExpression;
+      });
+    }
   }
   
   Widget _buildOperationButton(String operation) {
@@ -33,19 +37,8 @@ class _ManualInputScreenState extends State<ManualInputScreen> {
           if (operation == '=') {
             _displayedExpression = (_displayedExpression.isEmpty ? '' : _displayedExpression) + '=';
           } else {
-            // For operations like +, -, ×, ÷, we append to the current expression
+            // For other operations, append to the displayed expression
             _displayedExpression = (_displayedExpression.isEmpty ? '' : _displayedExpression) + operation;
-            
-            // Also try to update the math controller with the new operation
-            try {
-              // We'll only update the displayed expression, not the math controller directly
-              // This avoids type conversion issues
-              setState(() {
-                _displayedExpression += operation;
-              });
-            } catch (e) {
-              print('Error updating expression: $e');
-            }
           }
         });
       },
@@ -136,7 +129,13 @@ class _ManualInputScreenState extends State<ManualInputScreen> {
               onPressed: () {
                 if (_displayedExpression.isNotEmpty) {
                   // Use the displayed expression which may include the equals sign
-                  final String mathProblem = _displayedExpression;
+                  String mathProblem = _displayedExpression;
+                  
+                  // Make sure the expression has an equals sign if it doesn't have one
+                  if (!mathProblem.contains('=')) {
+                    mathProblem += '=';
+                  }
+                  
                   Navigator.push(
                     context,
                     MaterialPageRoute(

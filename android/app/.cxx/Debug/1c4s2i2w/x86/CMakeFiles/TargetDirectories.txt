@@ -1,0 +1,2 @@
+C:/Users/MYCOMPUTER/Desktop/Project APPs/Math Scanner/android/app/.cxx/Debug/1c4s2i2w/x86/CMakeFiles/edit_cache.dir
+C:/Users/MYCOMPUTER/Desktop/Project APPs/Math Scanner/android/app/.cxx/Debug/1c4s2i2w/x86/CMakeFiles/rebuild_cache.dir

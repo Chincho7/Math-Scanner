@@ -1,0 +1,2 @@
+C:/Users/MYCOMPUTER/Desktop/Project APPs/Math Scanner/android/app/.cxx/Debug/6b675q2e/armeabi-v7a/CMakeFiles/edit_cache.dir
+C:/Users/MYCOMPUTER/Desktop/Project APPs/Math Scanner/android/app/.cxx/Debug/6b675q2e/armeabi-v7a/CMakeFiles/rebuild_cache.dir

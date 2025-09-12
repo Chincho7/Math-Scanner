@@ -1,0 +1,2 @@
+C:/Users/MYCOMPUTER/Desktop/Project APPs/Math Scanner/android/app/.cxx/RelWithDebInfo/681f3h66/arm64-v8a/CMakeFiles/edit_cache.dir
+C:/Users/MYCOMPUTER/Desktop/Project APPs/Math Scanner/android/app/.cxx/RelWithDebInfo/681f3h66/arm64-v8a/CMakeFiles/rebuild_cache.dir

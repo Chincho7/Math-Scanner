@@ -1,0 +1,568 @@
+import 'package:camera/camera.dart';
+import 'package:flutter/material.dart';
+import 'package:math_scanner/screens/result_screen.dart';
+import 'package:math_scanner/services/text_recognition_service.dart';
+import 'package:math_scanner/services/permission_service.dart';
+import 'package:permission_handler/permission_handler.dart';
+import 'package:math_scanner/screens/camera_permission_guide_screen.dart';
+import 'dart:io';
+import 'dart:async';
+
+class CameraScreen extends StatefulWidget {
+  const CameraScreen({Key? key}) : super(key: key);
+
+  @override
+  State<CameraScreen> createState() => _CameraScreenState();
+}
+
+class _CameraScreenState extends State<CameraScreen> {
+  CameraController? _cameraController;
+  List<CameraDescription> _cameras = [];
+  bool _isCameraInitialized = false;
+  bool _isProcessingImage = false;
+  final TextRecognitionService _textRecognitionService = TextRecognitionService();
+  final PermissionService _permissionService = PermissionService();
+
+  @override
+  void initState() {
+    super.initState();
+    _requestCameraPermission();
+  }
+
+  Future<void> _requestCameraPermission() async {
+    try {
+      // For iOS, aggressively try to force camera permission registration
+      if (Platform.isIOS) {
+        await _permissionService.forceIOSCameraPermissionRegistration();
+      }
+      
+      // First check if camera is physically available
+      final isCameraAvailable = await _permissionService.isCameraAvailable();
+      if (!isCameraAvailable) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('No camera detected on your device.'),
+              duration: Duration(seconds: 3),
+            ),
+          );
+          Navigator.pop(context);
+        }
+        return;
+      }
+      
+      final hasPermission = await _permissionService.requestCameraPermission(context);
+      
+      if (hasPermission) {
+        await _initializeCamera();
+      } else {
+        // If permission denied, show the detailed guide
+        if (mounted) {
+          final result = await showDialog<bool>(
+            context: context,
+            builder: (context) => AlertDialog(
+              title: const Text('Camera Permission Required'),
+              content: const Text('Would you like to see step-by-step instructions on how to enable camera permissions?'),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context, false),
+                  child: const Text('No, Go Back'),
+                ),
+                TextButton(
+                  onPressed: () => Navigator.pop(context, true),
+                  child: const Text('Yes, Show Guide'),
+                ),
+              ],
+            ),
+          );
+          
+          if (result == true) {
+            if (mounted) {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => const CameraPermissionGuideScreen()),
+              ).then((_) {
+                Navigator.pop(context); // Return to home screen after guide
+              });
+            }
+          } else {
+            // User declined to see guide, just go back
+            if (mounted) Navigator.pop(context);
+          }
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error requesting camera permission: $e'),
+            duration: const Duration(seconds: 5),
+          ),
+        );
+        Navigator.pop(context);
+      }
+    }
+  }
+
+  Future<void> _initializeCamera() async {
+    try {
+      // Let the user know we're initializing
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Setting up camera...'),
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
+      
+      setState(() {
+        _isCameraInitialized = false;
+      });
+      
+      // For iOS, need a longer delay after permission to ensure system is ready
+      if (Platform.isIOS) {
+        print("iOS detected: Adding extra delay for camera system");
+        await Future.delayed(const Duration(seconds: 2));
+      }
+      
+      // Get available cameras
+      print("Requesting available cameras...");
+      _cameras = await availableCameras();
+      print("Found ${_cameras.length} cameras");
+      
+      if (_cameras.isEmpty) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('No cameras found on your device'),
+              duration: Duration(seconds: 3),
+            ),
+          );
+          Navigator.pop(context);
+        }
+        return;
+      }
+      
+      // Find the rear camera
+      final backCamera = _cameras.firstWhere(
+        (camera) => camera.lensDirection == CameraLensDirection.back,
+        orElse: () => _cameras.first,
+      );
+      
+      print("Selected camera: ${backCamera.name}");
+      
+      // Dispose of any existing controller before creating a new one
+      await _cameraController?.dispose();
+      
+      // We'll try different approaches for iOS - first with yuv420
+      if (Platform.isIOS) {
+        print("iOS: Using progressive camera initialization approach");
+        await _initializeCameraWithFallbacks(backCamera);
+      } else {
+        // For Android, use standard approach
+        _cameraController = CameraController(
+          backCamera,
+          ResolutionPreset.medium,
+          enableAudio: false,
+          imageFormatGroup: ImageFormatGroup.jpeg,
+        );
+        
+        print("Camera controller created for Android");
+        
+        await _cameraController!.initialize();
+        
+        if (mounted) {
+          setState(() {
+            _isCameraInitialized = true;
+          });
+          print("Camera initialized successfully on Android");
+        }
+      }
+    } catch (e) {
+      print("Camera initialization error: $e");
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error initializing camera: $e'),
+            duration: const Duration(seconds: 5),
+            action: SnackBarAction(
+              label: 'Retry',
+              onPressed: () {
+                _requestCameraPermission();
+              },
+            ),
+          ),
+        );
+        
+        // Only pop if it's a permission-related error
+        if (e.toString().toLowerCase().contains('permission') || 
+            e.toString().toLowerCase().contains('access') || 
+            e.toString().toLowerCase().contains('denied')) {
+          Navigator.pop(context);
+        }
+      }
+    }
+  }
+  
+  // Special method to try multiple approaches for iOS camera initialization
+  Future<void> _initializeCameraWithFallbacks(CameraDescription camera) async {
+    try {
+      print("Starting progressive iOS camera initialization");
+      
+      // List of format and resolution combinations to try
+      final List<Map<String, dynamic>> attempts = [
+        {'format': ImageFormatGroup.yuv420, 'resolution': ResolutionPreset.low},
+        {'format': ImageFormatGroup.bgra8888, 'resolution': ResolutionPreset.low},
+        {'format': ImageFormatGroup.jpeg, 'resolution': ResolutionPreset.low},
+        {'format': ImageFormatGroup.yuv420, 'resolution': ResolutionPreset.veryLow},
+        {'format': null, 'resolution': ResolutionPreset.low}, // No format specified
+      ];
+      
+      Exception? lastException;
+      
+      // Try each combination until one works
+      for (final attempt in attempts) {
+        if (_cameraController != null) {
+          await _cameraController!.dispose();
+        }
+        
+        final ImageFormatGroup? format = attempt['format'];
+        final ResolutionPreset resolution = attempt['resolution'];
+        
+        try {
+          print("Trying camera with ${format?.toString() ?? 'default'} format and $resolution resolution");
+          
+          // Create controller with current attempt settings
+          if (format != null) {
+            _cameraController = CameraController(
+              camera,
+              resolution,
+              enableAudio: false,
+              imageFormatGroup: format,
+            );
+          } else {
+            // Without explicit format
+            _cameraController = CameraController(
+              camera,
+              resolution,
+              enableAudio: false,
+            );
+          }
+          
+          // Add listener for camera errors
+          _cameraController!.addListener(() {
+            if (_cameraController!.value.hasError && mounted) {
+              print("Camera error: ${_cameraController!.value.errorDescription}");
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text('Camera error: ${_cameraController!.value.errorDescription}'),
+                  duration: const Duration(seconds: 3),
+                ),
+              );
+            }
+          });
+          
+          // Try to initialize with timeout
+          print("Initializing camera with timeout...");
+          await _cameraController!.initialize().timeout(
+            const Duration(seconds: 10),
+            onTimeout: () {
+              print("Camera initialization timed out");
+              throw TimeoutException('Camera initialization timed out');
+            },
+          );
+          
+          // If we got here, initialization succeeded
+          print("Camera initialization successful with ${format?.toString() ?? 'default'} format");
+          
+          // Short delay to ensure camera is fully ready
+          await Future.delayed(const Duration(milliseconds: 500));
+          
+          if (mounted) {
+            setState(() {
+              _isCameraInitialized = true;
+            });
+          }
+          
+          // Success! Exit the loop
+          return;
+        } catch (e) {
+          lastException = e is Exception ? e : Exception(e.toString());
+          print("Attempt failed: $e");
+          // Continue to next attempt
+        }
+      }
+      
+      // If we reach here, all attempts failed
+      print("All camera initialization attempts failed");
+      throw lastException ?? Exception("Failed to initialize camera after multiple attempts");
+    } catch (e) {
+      print("Camera initialization error: $e");
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error initializing camera: $e'),
+            duration: const Duration(seconds: 5),
+            action: SnackBarAction(
+              label: 'Retry',
+              onPressed: () {
+                _requestCameraPermission();
+              },
+            ),
+          ),
+        );
+        
+        // Only pop if it's a permission-related error
+        if (e.toString().toLowerCase().contains('permission') || 
+            e.toString().toLowerCase().contains('access') || 
+            e.toString().toLowerCase().contains('denied')) {
+          Navigator.pop(context);
+        }
+      }
+    }
+  }
+  }
+
+  @override
+  void dispose() {
+    _cameraController?.dispose();
+    super.dispose();
+  }
+
+  Future<void> _takePicture() async {
+    if (_cameraController == null || !_cameraController!.value.isInitialized || _isProcessingImage) {
+      return;
+    }
+
+    setState(() {
+      _isProcessingImage = true;
+    });
+
+    try {
+      final XFile photo = await _cameraController!.takePicture();
+      final String recognizedText = await _textRecognitionService.recognizeTextFromPath(photo.path);
+      
+      if (mounted) {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => ResultScreen(
+              mathProblem: recognizedText,
+              imageSource: photo.path,
+            ),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error capturing image: $e'),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isProcessingImage = false;
+        });
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Scan Math Problem'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.refresh),
+            tooltip: "Retry Camera",
+            onPressed: () {
+              // Reset everything and start fresh
+              _cameraController?.dispose();
+              _cameraController = null;
+              setState(() {
+                _isCameraInitialized = false;
+              });
+              _requestCameraPermission();
+            },
+          ),
+          IconButton(
+            icon: const Icon(Icons.bug_report),
+            tooltip: "Camera Test",
+            onPressed: () {
+              Navigator.pushNamed(context, '/camera_test');
+            },
+          ),
+        ],
+      ),
+      body: Column(
+        children: [
+          Expanded(
+            child: Builder(
+              builder: (context) {
+                // Only show preview when camera is fully initialized
+                if (_isCameraInitialized && 
+                    _cameraController != null && 
+                    _cameraController!.value.isInitialized) {
+                  
+                  // Use a try-catch around CameraPreview to handle any rendering errors
+                  try {
+                    return Stack(
+                      alignment: Alignment.center,
+                      children: [
+                        CameraPreview(_cameraController!),
+                        // Optional: add a focus point or other overlay elements
+                        Positioned(
+                          bottom: 20,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                            decoration: BoxDecoration(
+                              color: Colors.black54,
+                              borderRadius: BorderRadius.circular(16),
+                            ),
+                            child: const Text(
+                              'Point camera at a math problem',
+                              style: TextStyle(color: Colors.white),
+                            ),
+                          ),
+                        ),
+                      ],
+                    );
+                  } catch (e) {
+                    print("Error rendering camera preview: $e");
+                    // If preview fails, show error message
+                    return Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          const Icon(Icons.error_outline, color: Colors.red, size: 48),
+                          const SizedBox(height: 16),
+                          const Text(
+                            'Camera preview error',
+                            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                          ),
+                          const SizedBox(height: 8),
+                          Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 24.0),
+                            child: Text(
+                              e.toString(),
+                              textAlign: TextAlign.center,
+                              style: const TextStyle(fontSize: 14),
+                            ),
+                          ),
+                          const SizedBox(height: 24),
+                          ElevatedButton(
+                            onPressed: () {
+                              _cameraController?.dispose();
+                              _cameraController = null;
+                              setState(() {
+                                _isCameraInitialized = false;
+                              });
+                              _requestCameraPermission();
+                            },
+                            child: const Text('Retry Camera'),
+                          ),
+                        ],
+                      ),
+                    );
+                  }
+                } else {
+                  // Show loading state
+                  return Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        const CircularProgressIndicator(),
+                        const SizedBox(height: 20),
+                        const Text(
+                          'Initializing camera...',
+                          style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                        ),
+                        const SizedBox(height: 10),
+                        if (Platform.isIOS) ...[
+                          const Padding(
+                            padding: EdgeInsets.symmetric(horizontal: 32.0),
+                            child: Text(
+                              'iOS camera initialization can take several seconds',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(fontSize: 14, fontStyle: FontStyle.italic),
+                            ),
+                          ),
+                          const SizedBox(height: 10),
+                          const Padding(
+                            padding: EdgeInsets.symmetric(horizontal: 32.0),
+                            child: Text(
+                              'If you see a white screen, please tap the refresh button',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(fontSize: 14, color: Colors.red),
+                            ),
+                          ),
+                        ],
+                        const SizedBox(height: 30),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            ElevatedButton.icon(
+                              onPressed: () {
+                                _cameraController?.dispose();
+                                _cameraController = null;
+                                setState(() {
+                                  _isCameraInitialized = false;
+                                });
+                                _requestCameraPermission();
+                              },
+                              icon: const Icon(Icons.refresh),
+                              label: const Text('Retry'),
+                            ),
+                            const SizedBox(width: 16),
+                            ElevatedButton.icon(
+                              onPressed: () => openAppSettings(),
+                              icon: const Icon(Icons.settings),
+                              label: const Text('Settings'),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  );
+                }
+              },
+            ),
+          ),
+          Container(
+            padding: const EdgeInsets.all(20),
+            color: Colors.black12,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+              children: [
+                IconButton(
+                  onPressed: () => Navigator.pop(context),
+                  icon: const Icon(Icons.arrow_back),
+                  iconSize: 30,
+                  tooltip: "Go Back",
+                ),
+                FloatingActionButton(
+                  onPressed: (_isProcessingImage || !_isCameraInitialized) ? null : _takePicture,
+                  tooltip: "Take Photo",
+                  child: _isProcessingImage
+                      ? const CircularProgressIndicator(color: Colors.white)
+                      : const Icon(Icons.camera_alt),
+                ),
+                IconButton(
+                  onPressed: () => openAppSettings(),
+                  icon: const Icon(Icons.settings),
+                  iconSize: 30,
+                  tooltip: "Settings",
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}

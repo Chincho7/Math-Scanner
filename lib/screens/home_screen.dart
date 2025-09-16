@@ -5,62 +5,158 @@ import 'package:image_picker/image_picker.dart';
 import 'package:math_scanner/screens/result_screen.dart';
 import 'package:math_scanner/services/text_recognition_service.dart';
 import 'package:math_scanner/screens/camera_test_page.dart';
+import 'package:permission_handler/permission_handler.dart';
+import 'package:math_scanner/services/permission_service.dart';
+import 'package:math_scanner/screens/camera_permission_guide_screen.dart';
 
-class HomeScreen extends StatelessWidget {
+class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
 
+  @override
+  State<HomeScreen> createState() => _HomeScreenState();
+}
+
+class _HomeScreenState extends State<HomeScreen> {
+  bool _cameraPermissionDenied = false;
+  final PermissionService _permissionService = PermissionService();
+  
+  @override
+  void initState() {
+    super.initState();
+    _checkCameraPermission();
+  }
+  
+  Future<void> _checkCameraPermission() async {
+    final status = await Permission.camera.status;
+    if (mounted) {
+      setState(() {
+        _cameraPermissionDenied = status.isDenied || status.isPermanentlyDenied;
+      });
+    }
+  }
+  
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Math Scanner'),
         centerTitle: true,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.settings),
+            onPressed: () {
+              openAppSettings();
+            },
+          ),
+        ],
       ),
-      body: Padding(
-        padding: const EdgeInsets.all(20.0),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            const Text(
-              'Choose Input Method',
-              style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
-              textAlign: TextAlign.center,
+      body: Column(
+        children: [
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.all(20.0),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const Text(
+                    'Choose Input Method',
+                    style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 40),
+                  _buildOptionCard(
+                    context,
+                    'Scan with Camera',
+                    Icons.camera_alt,
+                    Colors.blue,
+                    () => _navigateToCameraScreen(context),
+                  ),
+                  const SizedBox(height: 20),
+                  _buildOptionCard(
+                    context,
+                    'Upload Image',
+                    Icons.photo_library,
+                    Colors.green,
+                    () => _pickImageFromGallery(context),
+                  ),
+                  const SizedBox(height: 20),
+                  _buildOptionCard(
+                    context,
+                    'Manual Input',
+                    Icons.keyboard,
+                    Colors.orange,
+                    () => _navigateToManualInputScreen(context),
+                  ),
+                  const SizedBox(height: 20),
+                  _buildOptionCard(
+                    context,
+                    'Camera Test',
+                    Icons.camera_outlined,
+                    Colors.purple,
+                    () => _navigateToCameraTest(context),
+                  ),
+                ],
+              ),
             ),
-            const SizedBox(height: 40),
-            _buildOptionCard(
-              context,
-              'Scan with Camera',
-              Icons.camera_alt,
-              Colors.blue,
-              () => _navigateToCameraScreen(context),
+          ),
+          if (_cameraPermissionDenied)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              color: Colors.black87,
+              child: Row(
+                children: [
+                  const Icon(
+                    Icons.no_photography,
+                    color: Colors.white,
+                  ),
+                  const SizedBox(width: 12),
+                  const Expanded(
+                    child: Text(
+                      "Camera permission is required to scan math problems",
+                      style: TextStyle(color: Colors.white),
+                    ),
+                  ),
+                  TextButton(
+                    onPressed: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => const CameraPermissionGuideScreen(),
+                        ),
+                      ).then((_) {
+                        // Check permission again after returning from the guide screen
+                        if (mounted) {
+                          Future.delayed(const Duration(seconds: 1), () {
+                            _checkCameraPermission();
+                          });
+                        }
+                      });
+                    },
+                    child: const Text(
+                      "Help",
+                      style: TextStyle(color: Colors.blue),
+                    ),
+                  ),
+                  TextButton(
+                    onPressed: () async {
+                      await openAppSettings();
+                      // Check permission again after returning from settings
+                      if (mounted) {
+                        Future.delayed(const Duration(seconds: 1), () {
+                          _checkCameraPermission();
+                        });
+                      }
+                    },
+                    child: const Text(
+                      "Settings",
+                      style: TextStyle(color: Colors.blue),
+                    ),
+                  ),
+                ],
+              ),
             ),
-            const SizedBox(height: 20),
-            _buildOptionCard(
-              context,
-              'Upload Image',
-              Icons.photo_library,
-              Colors.green,
-              () => _pickImageFromGallery(context),
-            ),
-            const SizedBox(height: 20),
-            _buildOptionCard(
-              context,
-              'Manual Input',
-              Icons.keyboard,
-              Colors.orange,
-              () => _navigateToManualInputScreen(context),
-            ),
-            const SizedBox(height: 20),
-            _buildOptionCard(
-              context,
-              'Camera Test',
-              Icons.camera_outlined,
-              Colors.purple,
-              () => _navigateToCameraTest(context),
-            ),
-          ],
-        ),
+        ],
       ),
     );
   }

@@ -21,6 +21,7 @@ dependencies:
   math_expressions: ^2.4.0
   http: ^1.1.0
   flutter_dotenv: ^5.1.0
+  shared_preferences: ^2.2.2
 
 dev_dependencies:
   flutter_test:
@@ -31,15 +32,24 @@ dev_dependencies:
 flutter:
   uses-material-design: true
   assets:
-    - assets/images/
+    - assets/
+    - assets/app_icon.png
     - .env
 
 # App Icon Configuration
 flutter_launcher_icons:
-  android: true
+  android: "launcher_icon"
   ios: true
   image_path: "assets/app_icon.png"
   min_sdk_android: 21
   remove_alpha_ios: true
   adaptive_icon_background: "#FFFFFF"
   adaptive_icon_foreground: "assets/app_icon.png"
+  # Generate for different platforms
+  windows:
+    generate: true
+    image_path: "assets/app_icon.png"
+    icon_size: 48
+  macos:
+    generate: true
+    image_path: "assets/app_icon.png"

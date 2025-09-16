@@ -1,232 +1,227 @@
-import 'dart:async';
+import 'dart:io';
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:permission_handler/permission_handler.dart';
 
-/// A direct camera test page that focuses solely on camera permissions and initialization
-/// This isolates camera functionality for easier debugging
+/// A robust camera test page with comprehensive error reporting
 class CameraTestPage extends StatefulWidget {
-  const CameraTestPage({super.key});
+  const CameraTestPage({Key? key}) : super(key: key);
 
   @override
   State<CameraTestPage> createState() => _CameraTestPageState();
 }
 
-class _CameraTestPageState extends State<CameraTestPage> with WidgetsBindingObserver {
+class _CameraTestPageState extends State<CameraTestPage> {
   CameraController? _controller;
-  bool _isCameraInitialized = false;
-  bool _isPermissionRequested = false;
-  String _statusMessage = "Checking camera permission...";
-  PermissionStatus? _permissionStatus;
+  List<CameraDescription>? _cameras;
+  String _status = "Starting camera test...";
+  bool _isInitialized = false;
 
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addObserver(this);
-    // Don't request permission immediately - let user trigger it
+    _initTest();
   }
 
   @override
   void dispose() {
-    WidgetsBinding.instance.removeObserver(this);
     _controller?.dispose();
     super.dispose();
   }
 
-  @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    // Handle app returning from Settings after permission change
-    if (state == AppLifecycleState.resumed && _isPermissionRequested) {
-      _checkPermissionAndInitCamera();
-    }
-  }
-
-  // Separate permission check from camera initialization for better diagnostics
-  Future<void> _checkPermissionAndInitCamera() async {
-    setState(() {
-      _statusMessage = "Checking camera permission...";
-    });
-
-    try {
-      _permissionStatus = await Permission.camera.status;
+  Future<void> _initTest() async {
+    _updateStatus("Requesting camera permission...");
+    
+    // Request permission
+    final status = await Permission.camera.request();
+    
+    if (status.isGranted) {
+      _updateStatus("Permission granted. Getting available cameras...");
       
-      if (_permissionStatus == PermissionStatus.granted) {
-        setState(() {
-          _statusMessage = "Permission granted. Initializing camera...";
-        });
-        await _initializeCamera();
-      } else if (_permissionStatus == PermissionStatus.denied) {
-        setState(() {
-          _statusMessage = "Camera permission denied. Request needed.";
-        });
-      } else if (_permissionStatus == PermissionStatus.permanentlyDenied) {
-        setState(() {
-          _statusMessage = "Camera permission permanently denied. Please open settings.";
-        });
-      } else {
-        setState(() {
-          _statusMessage = "Permission status: ${_permissionStatus?.toString()}";
-        });
+      try {
+        // Get cameras
+        _cameras = await availableCameras();
+        _updateStatus("Found ${_cameras!.length} cameras");
+        
+        if (_cameras!.isEmpty) {
+          _updateStatus("Error: No cameras found");
+          return;
+        }
+        
+        // Find back camera
+        final backCamera = _cameras!.firstWhere(
+          (camera) => camera.lensDirection == CameraLensDirection.back,
+          orElse: () => _cameras!.first,
+        );
+        
+        _updateStatus("Selected camera: ${backCamera.name}");
+        
+        // Create controller with low resolution
+        _controller = CameraController(
+          backCamera,
+          ResolutionPreset.low,
+          enableAudio: false,
+          imageFormatGroup: Platform.isIOS ? ImageFormatGroup.bgra8888 : ImageFormatGroup.jpeg,
+        );
+        
+        _updateStatus("Created controller. Initializing...");
+        
+        // Initialize with longer timeout for iOS
+        await _controller!.initialize().timeout(
+          const Duration(seconds: 15),
+          onTimeout: () {
+            _updateStatus("ERROR: Camera initialization timed out");
+            return;
+          },
+        );
+        
+        if (mounted) {
+          setState(() {
+            _isInitialized = true;
+            _status = "Camera initialized successfully!";
+          });
+        }
+      } catch (e) {
+        _updateStatus("Error: $e");
       }
-    } catch (e) {
-      setState(() {
-        _statusMessage = "Error checking permission: $e";
-      });
+    } else {
+      _updateStatus("Permission denied: $status");
     }
   }
-
-  // Handle the request separately
-  Future<void> _requestPermission() async {
-    setState(() {
-      _statusMessage = "Requesting camera permission...";
-      _isPermissionRequested = true;
-    });
-
-    try {
-      final status = await Permission.camera.request();
-      _permissionStatus = status;
-      
-      if (status.isGranted) {
-        setState(() {
-          _statusMessage = "Permission granted. Initializing camera...";
-        });
-        await _initializeCamera();
-      } else {
-        setState(() {
-          _statusMessage = "Permission denied: ${status.toString()}";
-        });
-      }
-    } catch (e) {
+  
+  void _updateStatus(String message) {
+    print("CAMERA TEST: $message");
+    if (mounted) {
       setState(() {
-        _statusMessage = "Error requesting permission: $e";
+        _status = message;
       });
     }
-  }
-
-  Future<void> _initializeCamera() async {
-    setState(() {
-      _statusMessage = "Getting available cameras...";
-    });
-
-    try {
-      // Get available cameras
-      final cameras = await availableCameras();
-      if (cameras.isEmpty) {
-        setState(() {
-          _statusMessage = "No cameras found on device";
-        });
-        return;
-      }
-
-      // Start with back camera if available
-      final backCamera = cameras.firstWhere(
-        (camera) => camera.lensDirection == CameraLensDirection.back,
-        orElse: () => cameras.first,
-      );
-
-      setState(() {
-        _statusMessage = "Creating camera controller...";
-      });
-
-      // Create controller
-      _controller = CameraController(
-        backCamera,
-        ResolutionPreset.medium, // Lower resolution for testing
-        enableAudio: false,
-        imageFormatGroup: ImageFormatGroup.jpeg,
-      );
-
-      // Initialize camera
-      setState(() {
-        _statusMessage = "Initializing camera controller...";
-      });
-      
-      await _controller!.initialize();
-
-      setState(() {
-        _isCameraInitialized = true;
-        _statusMessage = "Camera initialized successfully!";
-      });
-    } catch (e) {
-      setState(() {
-        _statusMessage = "Camera initialization error: $e";
-      });
-    }
-  }
-
-  Widget _buildPermissionView() {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(24.0),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Icon(Icons.camera_alt, size: 64, color: Colors.grey),
-            const SizedBox(height: 24),
-            Text(_statusMessage, 
-              textAlign: TextAlign.center,
-              style: const TextStyle(fontSize: 16),
-            ),
-            const SizedBox(height: 32),
-            if (_permissionStatus == null || _permissionStatus == PermissionStatus.denied)
-              ElevatedButton(
-                onPressed: _requestPermission,
-                child: const Text("Request Camera Permission"),
-              ),
-            if (_permissionStatus == PermissionStatus.permanentlyDenied)
-              ElevatedButton(
-                onPressed: () => openAppSettings(),
-                child: const Text("Open Settings"),
-              ),
-            const SizedBox(height: 16),
-            ElevatedButton(
-              onPressed: _checkPermissionAndInitCamera,
-              child: const Text("Check Permission Status"),
-            ),
-          ],
-        ),
-      ),
-    );
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Camera Test'),
+        title: const Text("Camera Test"),
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh),
             onPressed: () {
-              // Dispose and recreate
               _controller?.dispose();
+              _controller = null;
               setState(() {
-                _isCameraInitialized = false;
-                _controller = null;
+                _isInitialized = false;
               });
-              _checkPermissionAndInitCamera();
+              _initTest();
             },
-          )
+            tooltip: "Restart Test",
+          ),
+          IconButton(
+            icon: const Icon(Icons.settings),
+            onPressed: openAppSettings,
+            tooltip: "Open Settings",
+          ),
         ],
       ),
-      body: _isCameraInitialized
-          ? Column(
+      body: Column(
+        children: [
+          // Status bar
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(16),
+            color: Colors.grey[200],
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Expanded(
-                  child: _controller != null
-                      ? CameraPreview(_controller!)
-                      : const Center(child: Text("Camera controller is null")),
+                const Text(
+                  "Camera Status:",
+                  style: TextStyle(fontWeight: FontWeight.bold),
                 ),
-                Container(
-                  padding: const EdgeInsets.all(16),
-                  color: Colors.black12,
-                  child: Text(_statusMessage, 
+                const SizedBox(height: 8),
+                Text(_status),
+                if (Platform.isIOS) ...[
+                  const SizedBox(height: 8),
+                  const Text(
+                    "iOS camera initialization can take several seconds",
+                    style: TextStyle(fontStyle: FontStyle.italic, fontSize: 12),
+                  ),
+                ],
+              ],
+            ),
+          ),
+          
+          // Camera preview or loading state
+          Expanded(
+            child: _isInitialized && _controller != null && _controller!.value.isInitialized
+                ? _buildCameraPreview()
+                : _buildLoadingState(),
+          ),
+          
+          // iOS-specific help
+          if (Platform.isIOS)
+            Container(
+              padding: const EdgeInsets.all(16),
+              color: Colors.black.withOpacity(0.05),
+              child: Column(
+                children: [
+                  const Text(
+                    "iPhone Camera Permission Guide:",
+                    textAlign: TextAlign.center,
+                    style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    "Settings > Math Scanner > Camera > Enable",
+                    textAlign: TextAlign.center,
                     style: const TextStyle(fontSize: 14),
                   ),
-                ),
-              ],
-            )
-          : _buildPermissionView(),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+  
+  Widget _buildCameraPreview() {
+    try {
+      return CameraPreview(_controller!);
+    } catch (e) {
+      _updateStatus("Preview error: $e");
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.error_outline, color: Colors.red, size: 64),
+            const SizedBox(height: 16),
+            const Text(
+              "Error displaying camera preview",
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 16),
+            Text(e.toString()),
+          ],
+        ),
+      );
+    }
+  }
+  
+  Widget _buildLoadingState() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          const CircularProgressIndicator(),
+          const SizedBox(height: 24),
+          Text(_status),
+          const SizedBox(height: 24),
+          ElevatedButton.icon(
+            onPressed: _initTest,
+            icon: const Icon(Icons.refresh),
+            label: const Text("Retry"),
+          ),
+        ],
+      ),
     );
   }
 }

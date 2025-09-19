@@ -31,10 +31,11 @@ class _CameraScreenState extends State<CameraScreen> {
   @override
   void initState() {
     super.initState();
-    // Defer camera permission request to avoid blocking UI
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _requestCameraPermission();
-      _startWatchdog();
+    // Initialize camera screen without automatic permission request
+    // Permission will be requested when user taps the camera button
+    _startWatchdog();
+    setState(() {
+      _status = 'Tap camera button to start scanning';
     });
   }
 
@@ -309,6 +310,12 @@ class _CameraScreenState extends State<CameraScreen> {
   }
 
   Future<void> _takePicture() async {
+    // Check camera permission first
+    if (!_isCameraInitialized) {
+      await _requestCameraPermission();
+      return;
+    }
+    
     if (_cameraController == null || !_cameraController!.value.isInitialized || _isProcessingImage) {
       return;
     }
@@ -645,7 +652,7 @@ class _CameraScreenState extends State<CameraScreen> {
 
                   // Capture button
                   GestureDetector(
-                    onTap: (_isProcessingImage || !_isCameraInitialized) ? null : _takePicture,
+                    onTap: _isProcessingImage ? null : _takePicture,
                     child: Container(
                       width: 80,
                       height: 80,

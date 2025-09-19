@@ -29,37 +29,7 @@ class _MathScannerAppState extends State<MathScannerApp> {
   @override
   void initState() {
     super.initState();
-    // Warm-up permission non-blocking after first frame to avoid white screen hang.
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _warmUpIOSCameraPermission();
-    });
-  }
-
-  Future<void> _warmUpIOSCameraPermission() async {
-    if (!Platform.isIOS) return;
-    try {
-      final status = await Permission.camera.status;
-      if (!status.isGranted) {
-        // Fire request but don't await potential secondary operations.
-        await Permission.camera.request();
-      }
-      // Light camera probe (timeout) to register permission in Settings without blocking UI.
-      unawaited(_lightCameraProbe());
-    } catch (e) {
-      // Swallow errors; this is best-effort.
-    }
-  }
-
-  Future<void> _lightCameraProbe() async {
-    try {
-      final cameras = await availableCameras().timeout(const Duration(seconds: 3));
-      if (cameras.isEmpty) return;
-      final controller = CameraController(cameras.first, ResolutionPreset.low, enableAudio: false);
-      await controller.initialize().timeout(const Duration(seconds: 4));
-      await controller.dispose();
-    } catch (_) {
-      // Ignore; diagnostic only.
-    }
+    // Camera permission will be requested only when user navigates to camera screen
   }
 
   @override
